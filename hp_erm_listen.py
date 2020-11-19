@@ -174,7 +174,7 @@ class HP_ERM_Handler(object):
 
 
 if __name__ == "__main__":
-    h = HP_ERM_Handler(rotate=10, rounded=True)
+    h = HP_ERM_Handler(rotate=300, rounded=True)
 
     while True:
         h.handle_message()
