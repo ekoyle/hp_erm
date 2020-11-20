@@ -89,6 +89,9 @@ class HP_ERM_Handler(object):
         self.open_socket()
         self.pcaps = {}
         self.pcap_filename_prefix = "unset"
+        self.sync_on_cleanup = True
+        self.cleanup_interval = 30  # seconds
+        self.next_cleanup = time.time() + self.cleanup_interval
 
     def open_socket(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -123,6 +126,8 @@ class HP_ERM_Handler(object):
             # just print with scapy for now
             p = Ether(packet)
             p.show()
+
+        self.do_cleanup()
 
         return (packet, timestamp, src_ip, src_port)
 
@@ -171,6 +176,23 @@ class HP_ERM_Handler(object):
                 pcap_data = self.pcaps[(src_ip, src_port)]
 
         return pcap_data["file"]
+
+    def do_cleanup(self):
+        # periodically clean up/sync files
+        ts = time.time()
+        if ts < self.next_cleanup:
+            return
+
+        self.next_cleanup = int(ts) + self.cleanup_interval  # seconds
+
+        for k, pcap in self.pcaps.items():
+            src_ip, src_port = k
+            if "rotate_at" in pcap and ts > pcap["rotate_at"]:
+                # next packet should cause a rotate anyway, finalize this one
+                pcap["file"].close()
+                del self.pcaps[k]
+            elif self.sync_on_cleanup:
+                pcap["file"].sync()
 
 
 if __name__ == "__main__":
