@@ -92,6 +92,7 @@ class HP_ERM_Handler(object):
         self.sync_on_cleanup = True
         self.cleanup_interval = 30  # seconds
         self.next_cleanup = time.time() + self.cleanup_interval
+        self.count = 0
 
     def open_socket(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -101,6 +102,7 @@ class HP_ERM_Handler(object):
 
     def handle_message(self, rotate=False):
         (packet, timestamp, src_ip, src_port) = self.get_message()
+        self.count += 1
         self.save_message(packet, timestamp, src_ip, src_port)
 
     def get_message(self):
@@ -185,18 +187,29 @@ class HP_ERM_Handler(object):
 
         self.next_cleanup = int(ts) + self.cleanup_interval  # seconds
 
+        to_del = []
         for k, pcap in self.pcaps.items():
             src_ip, src_port = k
             if "rotate_at" in pcap and ts > pcap["rotate_at"]:
                 # next packet should cause a rotate anyway, finalize this one
                 pcap["file"].close()
-                del self.pcaps[k]
+
+                # python gets angry if you delete keys while iterating over them
+                to_del.append(k)
             elif self.sync_on_cleanup:
                 pcap["file"].sync()
+
+        for k in to_del:
+            del self.pcaps[k]
 
 
 if __name__ == "__main__":
     h = HP_ERM_Handler(rotate=300, rounded=True)
 
+    prev = time.time()
+
     while True:
+        if (time.time()-prev) > 10:
+            prev = time.time()
+            print(f"packets: {h.count}")
         h.handle_message()
