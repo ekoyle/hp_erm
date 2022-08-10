@@ -82,13 +82,18 @@ class PCAPWriter(object):
 
 class HP_ERM_Handler(object):
     def __init__(
-        self, rotate=False, rounded=False,
+        self,
+        rotate=False,
+        rounded=False,
+        pcap_filename_prefix="unset",
+        pcap_dir="./pcap",
     ):
         self.rotate = rotate
         self.rounded = rounded
         self.open_socket()
         self.pcaps = {}
-        self.pcap_filename_prefix = "unset"
+        self.pcap_filename_prefix = pcap_filename_prefix
+        self.pcap_dir = pcap_dir
         self.sync_on_cleanup = True
         self.cleanup_interval = 30  # seconds
         self.next_cleanup = time.time() + self.cleanup_interval
@@ -149,7 +154,9 @@ class HP_ERM_Handler(object):
         pcap_filename_fmt = (
             f"{self.pcap_filename_prefix}_{src_ip}_{src_port}_{DATE_FMT}.pcap"
         )
+
         pcap_filename = time.strftime(pcap_filename_fmt, time.localtime(start))
+        pcap_filename = os.path.join(self.pcap_dir, pcap_filename)
 
         pcap_file = PCAPWriter(filename=pcap_filename)
 
@@ -209,7 +216,7 @@ if __name__ == "__main__":
     prev = time.time()
 
     while True:
-        if (time.time()-prev) > 10:
+        if (time.time() - prev) > 10:
             prev = time.time()
             print(f"packets: {h.count}")
         h.handle_message()
