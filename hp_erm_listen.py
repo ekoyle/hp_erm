@@ -6,6 +6,11 @@ import os
 
 import time
 
+import argparse
+
+import subprocess
+import shlex
+
 debug = False
 if debug:
     from scapy.layers.l2 import Ether
@@ -37,8 +42,9 @@ class PCAPWriter(object):
             raise Exception(f"File {filename} exists")
 
         self.file = None
+        self.filename = filename
 
-        self.file = open(filename, "wb")
+        self.file = open(self.filename, "wb")
         self.write_global_header()
 
     def __del__(self):
@@ -83,21 +89,26 @@ class PCAPWriter(object):
 class HP_ERM_Handler(object):
     def __init__(
         self,
-        rotate=False,
-        rounded=False,
+        exec_cmd=None,
         pcap_filename_prefix="unset",
         pcap_dir="./pcap",
+        rotate=False,
+        rounded=False,
     ):
-        self.rotate = rotate
-        self.rounded = rounded
-        self.open_socket()
+        self.exec_cmd = exec_cmd
         self.pcaps = {}
         self.pcap_filename_prefix = pcap_filename_prefix
         self.pcap_dir = pcap_dir
+        self.rotate = rotate
+        self.rounded = rounded
+
+        self.open_socket()
         self.sync_on_cleanup = True
         self.cleanup_interval = 30  # seconds
         self.next_cleanup = time.time() + self.cleanup_interval
         self.count = 0
+
+        self.running = []
 
     def open_socket(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -145,7 +156,13 @@ class HP_ERM_Handler(object):
     def rotate_pcap_file(self, timestamp, src_ip, src_port):
         pf = self.pcaps.get((src_ip, src_port), None)
         if pf:
-            pf["file"].close()
+            file = pf["file"]
+            file.close()
+            self.running.append(
+                subprocess.Popen(
+                    shlex.split(f"{self.exec_cmd} {file.filename}")
+                )
+            )
 
         start = timestamp[0]
         if self.rounded:
@@ -209,9 +226,57 @@ class HP_ERM_Handler(object):
         for k in to_del:
             del self.pcaps[k]
 
+        to_del_running = []
+        for i in range(len(self.running)):
+            ret = self.running[i].poll()
+            if ret is not None:
+                to_del_running.insert(0, i)
+
+        for i in to_del_running:
+            del self.running[i]
+
 
 if __name__ == "__main__":
-    h = HP_ERM_Handler(rotate=300, rounded=True)
+    parser = argparse.ArgumentParser(
+        description="Listen for HP remote mirror traffic and write to pcap files"
+    )
+
+    parser.add_argument(
+        "-d",
+        "--pcap-dir",
+        default="./pcap",
+        help="directory in which to store pcap files",
+    )
+    parser.add_argument(
+        "-e",
+        "--exec-cmd",
+        default=None,
+        help="run `EXEC_CMD <filename>` when closing each file",
+    )
+    parser.add_argument(
+        "-r",
+        "--rotate",
+        type=int,
+        default=300,
+        help="rotate files every <rotate> seconds",
+    )
+    parser.add_argument(
+        "-n",
+        "--no-rounding",
+        action="store_false",
+        default=True,
+        dest="rounded",
+        help="don't truncate start time to nearest multiple of <rotate> seconds",
+    )
+
+    args = parser.parse_args()
+
+    h = HP_ERM_Handler(
+        rotate=args.rotate,
+        pcap_dir=args.pcap_dir,
+        rounded=args.rounded,
+        exec_cmd=args.exec_cmd,
+    )
 
     prev = time.time()
 
