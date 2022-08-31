@@ -158,11 +158,12 @@ class HP_ERM_Handler(object):
         if pf:
             file = pf["file"]
             file.close()
-            self.running.append(
-                subprocess.Popen(
-                    shlex.split(f"{self.exec_cmd} {file.filename}")
+            if self.exec_cmd:
+                self.running.append(
+                    subprocess.Popen(
+                        shlex.split(f"{self.exec_cmd} {file.filename}")
+                    )
                 )
-            )
 
         start = timestamp[0]
         if self.rounded:
